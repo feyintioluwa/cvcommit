@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { PDFParse } from "pdf-parse";
+import { extractText, getDocumentProxy } from "unpdf";
 import mammoth from "mammoth";
 
 import { getCareerOSServerAccess } from "@/lib/access/server-access";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const access =
@@ -82,10 +85,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const buffer =
-      Buffer.from(
-        await file.arrayBuffer()
-      );
+    const arrayBuffer =
+      await file.arrayBuffer();
 
     let extractedText =
       "";
@@ -94,20 +95,23 @@ export async function POST(request: Request) {
       file.type ===
       "application/pdf"
     ) {
-      const parser =
-        new PDFParse({
-          data: buffer,
-        });
+      const pdf =
+        await getDocumentProxy(
+          new Uint8Array(
+            arrayBuffer
+          )
+        );
 
-      try {
-        const result =
-          await parser.getText();
+      const result =
+        await extractText(
+          pdf,
+          {
+            mergePages: true,
+          }
+        );
 
-        extractedText =
-          result.text;
-      } finally {
-        await parser.destroy();
-      }
+      extractedText =
+        result.text;
     }
 
     if (
@@ -116,7 +120,10 @@ export async function POST(request: Request) {
     ) {
       const result =
         await mammoth.extractRawText({
-          buffer,
+          buffer:
+            Buffer.from(
+              arrayBuffer
+            ),
         });
 
       extractedText =
