@@ -159,7 +159,7 @@ Create a `.env.local` file in the root directory and add the following environme
 GEMINI_API_KEY=your_gemini_api_key
 
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 ```
 
 ### Notes
