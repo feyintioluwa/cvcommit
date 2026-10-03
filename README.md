@@ -172,7 +172,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 
 ## Live Demo & Repository
 
-* **Live Demo:** [CVCommit Live URL]
+* **Live Demo:** https://cvcommit.vercel.app
 * **GitHub Repository:** https://github.com/feyintioluwa/cvcommit
 
 ---
