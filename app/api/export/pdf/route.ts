@@ -10,6 +10,15 @@ import {
 import {
   getCareerOSCVAccess,
 } from "@/lib/access/server-access";
+import {
+  DEFAULT_CV_TEMPLATE,
+} from "@/lib/cv/templates/template-registry";
+
+import {
+  isCVTemplateId,
+  type CVTemplateId,
+} from "@/lib/cv/templates/template-types";
+
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +35,41 @@ type ExportSection = {
 type ExportRequest = {
   cvHash: string;
   fileName: string;
+  templateId: CVTemplateId;
   sections: ExportSection[];
+};
+
+type PDFColor = ReturnType<typeof rgb>;
+
+/*
+ * One set of measurements and colours per CV template.
+ * Every drawing helper below reads from state.style,
+ * so choosing a template changes the PDF design.
+ */
+type TemplateStyle = {
+  marginX: number;
+  marginTop: number;
+  marginBottom: number;
+  nameSize: number;
+  detailSize: number;
+  detailLineHeight: number;
+  headerMode: "line" | "block";
+  headerRuleThickness: number;
+  headerRuleColor: PDFColor;
+  headerAfter: number;
+  headingMode: "rule" | "bar";
+  headingSize: number;
+  headingSpace: number;
+  headingRuleGap: number;
+  headingAdvance: number;
+  bodySize: number;
+  bodyLineHeight: number;
+  bulletIndent: number;
+  blockGap: number;
+  sectionGap: number;
+  accent: PDFColor;
+  headingColor: PDFColor;
+  detailColor: PDFColor;
 };
 
 type PDFState = {
@@ -34,22 +77,94 @@ type PDFState = {
   page: PDFPage;
   font: PDFFont;
   boldFont: PDFFont;
+  style: TemplateStyle;
   y: number;
 };
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 
-const MARGIN_X = 48;
-const MARGIN_TOP = 52;
-const MARGIN_BOTTOM = 52;
+const TEMPLATE_STYLES: Record<
+  CVTemplateId,
+  TemplateStyle
+> = {
+  classic: {
+    marginX: 48,
+    marginTop: 52,
+    marginBottom: 52,
+    nameSize: 20,
+    detailSize: 9.5,
+    detailLineHeight: 13,
+    headerMode: "line",
+    headerRuleThickness: 1.5,
+    headerRuleColor: rgb(0.08, 0.08, 0.08),
+    headerAfter: 22,
+    headingMode: "rule",
+    headingSize: 11,
+    headingSpace: 34,
+    headingRuleGap: 6,
+    headingAdvance: 29,
+    bodySize: 10.5,
+    bodyLineHeight: 15,
+    bulletIndent: 14,
+    blockGap: 6,
+    sectionGap: 6,
+    accent: rgb(0.18, 0.18, 0.18),
+    headingColor: rgb(0.08, 0.08, 0.08),
+    detailColor: rgb(0.32, 0.32, 0.32),
+  },
+  modern: {
+    marginX: 48,
+    marginTop: 52,
+    marginBottom: 52,
+    nameSize: 20,
+    detailSize: 9.5,
+    detailLineHeight: 13,
+    headerMode: "block",
+    headerRuleThickness: 0,
+    headerRuleColor: rgb(0.08, 0.08, 0.08),
+    headerAfter: 24,
+    headingMode: "bar",
+    headingSize: 11,
+    headingSpace: 36,
+    headingRuleGap: 0,
+    headingAdvance: 27,
+    bodySize: 10.5,
+    bodyLineHeight: 15.5,
+    bulletIndent: 14,
+    blockGap: 7,
+    sectionGap: 8,
+    accent: rgb(0.145, 0.388, 0.922),
+    headingColor: rgb(0.08, 0.08, 0.08),
+    detailColor: rgb(0.83, 0.83, 0.85),
+  },
+  compact: {
+    marginX: 40,
+    marginTop: 40,
+    marginBottom: 40,
+    nameSize: 16,
+    detailSize: 8.5,
+    detailLineHeight: 11.5,
+    headerMode: "line",
+    headerRuleThickness: 0.8,
+    headerRuleColor: rgb(0.6, 0.6, 0.6),
+    headerAfter: 14,
+    headingMode: "rule",
+    headingSize: 9.5,
+    headingSpace: 28,
+    headingRuleGap: 5,
+    headingAdvance: 21,
+    bodySize: 9.5,
+    bodyLineHeight: 13,
+    bulletIndent: 12,
+    blockGap: 4,
+    sectionGap: 4,
+    accent: rgb(0.18, 0.18, 0.18),
+    headingColor: rgb(0.08, 0.08, 0.08),
+    detailColor: rgb(0.32, 0.32, 0.32),
+  },
+};
 
-const BODY_SIZE = 10.5;
-const HEADING_SIZE = 11;
-const NAME_SIZE = 18;
-
-const BODY_LINE_HEIGHT = 15;
-const BULLET_INDENT = 14;
 
 function stringValue(
   value: unknown
@@ -167,6 +282,12 @@ function normalizeRequest(
       stringValue(
         raw.fileName
       ),
+    templateId:
+      isCVTemplateId(
+        raw.templateId
+      )
+        ? raw.templateId
+        : DEFAULT_CV_TEMPLATE,
     sections,
   };
 }
@@ -230,7 +351,7 @@ function createPage(
     page,
     y:
       PAGE_HEIGHT -
-      MARGIN_TOP,
+      state.style.marginTop,
   };
 }
 
@@ -241,7 +362,7 @@ function ensureSpace(
   if (
     state.y -
       requiredHeight >=
-    MARGIN_BOTTOM
+    state.style.marginBottom
   ) {
     return state;
   }
@@ -249,14 +370,15 @@ function ensureSpace(
   return createPage({
     pdf:
       state.pdf,
-
     font:
       state.font,
-
     boldFont:
       state.boldFont,
+    style:
+      state.style,
   });
 }
+
 
 function wrapText(
   text: string,
@@ -452,6 +574,9 @@ function drawHeader(
   state: PDFState,
   content: string
 ): PDFState {
+  const s =
+    state.style;
+
   const lines =
     content
       .split("\n")
@@ -467,53 +592,161 @@ function drawHeader(
     return state;
   }
 
+  const [
+    name,
+    ...details
+  ] = lines;
+
+  const contentWidth =
+    PAGE_WIDTH -
+    s.marginX * 2;
+
+  /*
+   * Modern template: a dark block with white text.
+   */
+  if (
+    s.headerMode ===
+    "block"
+  ) {
+    const pad = 16;
+
+    const detailLines =
+      details.length > 0
+        ? wrapText(
+            details.join(
+              " | "
+            ),
+            state.font,
+            s.detailSize,
+            contentWidth -
+              pad * 2
+          )
+        : [];
+
+    const height =
+      pad * 2 +
+      s.nameSize +
+      (detailLines.length >
+      0
+        ? 8 +
+          detailLines.length *
+            s.detailLineHeight
+        : 0);
+
+    const current =
+      ensureSpace(
+        state,
+        height + 10
+      );
+
+    const top =
+      current.y;
+
+    current.page.drawRectangle({
+      x:
+        s.marginX,
+      y:
+        top -
+        height,
+      width:
+        contentWidth,
+      height,
+      color:
+        rgb(
+          0.09,
+          0.09,
+          0.1
+        ),
+    });
+
+    current.page.drawText(
+      name,
+      {
+        x:
+          s.marginX +
+          pad,
+        y:
+          top -
+          pad -
+          s.nameSize,
+        size:
+          s.nameSize,
+        font:
+          current.boldFont,
+        color:
+          rgb(
+            1,
+            1,
+            1
+          ),
+      }
+    );
+
+    let lineY =
+      top -
+      pad -
+      s.nameSize -
+      8;
+
+    for (
+      const line of
+      detailLines
+    ) {
+      current.page.drawText(
+        line,
+        {
+          x:
+            s.marginX +
+            pad,
+          y:
+            lineY -
+            s.detailSize,
+          size:
+            s.detailSize,
+          font:
+            current.font,
+          color:
+            s.detailColor,
+        }
+      );
+
+      lineY -=
+        s.detailLineHeight;
+    }
+
+    return {
+      ...current,
+      y:
+        top -
+        height -
+        s.headerAfter,
+    };
+  }
+
+  /*
+   * Classic and Compact templates: name on the left,
+   * contact lines under it, and a rule below.
+   */
   let current =
     ensureSpace(
       state,
       70
     );
 
-  const [
-    name,
-    ...details
-  ] = lines;
-
-  const nameWidth =
-    current.boldFont
-      .widthOfTextAtSize(
-        name,
-        NAME_SIZE
-      );
-
   current.page.drawText(
     name,
     {
       x:
-        Math.max(
-          MARGIN_X,
-          (
-            PAGE_WIDTH -
-            nameWidth
-          ) /
-            2
-        ),
-
+        s.marginX,
       y:
         current.y -
-        NAME_SIZE,
-
+        s.nameSize,
       size:
-        NAME_SIZE,
-
+        s.nameSize,
       font:
         current.boldFont,
-
       color:
-        rgb(
-          0.08,
-          0.08,
-          0.08
-        ),
+        s.headingColor,
     }
   );
 
@@ -521,24 +754,21 @@ function drawHeader(
     ...current,
     y:
       current.y -
-      28,
+      (s.nameSize +
+        10),
   };
 
   if (
     details.length > 0
   ) {
-    const detailText =
-      details.join(
-        " | "
-      );
-
     const detailLines =
       wrapText(
-        detailText,
+        details.join(
+          " | "
+        ),
         current.font,
-        9.5,
-        PAGE_WIDTH -
-          MARGIN_X * 2
+        s.detailSize,
+        contentWidth
       );
 
     for (
@@ -548,45 +778,23 @@ function drawHeader(
       current =
         ensureSpace(
           current,
-          13
+          s.detailLineHeight
         );
-
-      const width =
-        current.font
-          .widthOfTextAtSize(
-            line,
-            9.5
-          );
 
       current.page.drawText(
         line,
         {
           x:
-            Math.max(
-              MARGIN_X,
-              (
-                PAGE_WIDTH -
-                width
-              ) /
-                2
-            ),
-
+            s.marginX,
           y:
             current.y -
-            9.5,
-
+            s.detailSize,
           size:
-            9.5,
-
+            s.detailSize,
           font:
             current.font,
-
           color:
-            rgb(
-              0.32,
-              0.32,
-              0.32
-            ),
+            s.detailColor,
         }
       );
 
@@ -594,7 +802,7 @@ function drawHeader(
         ...current,
         y:
           current.y -
-          13,
+          s.detailLineHeight,
       };
     }
   }
@@ -602,37 +810,30 @@ function drawHeader(
   current.page.drawLine({
     start: {
       x:
-        MARGIN_X,
+        s.marginX,
       y:
         current.y -
         6,
     },
-
     end: {
       x:
         PAGE_WIDTH -
-        MARGIN_X,
+        s.marginX,
       y:
         current.y -
         6,
     },
-
     thickness:
-      1,
-
+      s.headerRuleThickness,
     color:
-      rgb(
-        0.15,
-        0.15,
-        0.15
-      ),
+      s.headerRuleColor,
   });
 
   return {
     ...current,
     y:
       current.y -
-      22,
+      s.headerAfter,
   };
 }
 
@@ -640,58 +841,104 @@ function drawSectionHeading(
   state: PDFState,
   title: string
 ): PDFState {
+  const s =
+    state.style;
+
   const current =
     ensureSpace(
       state,
-      34
+      s.headingSpace
     );
 
+  /*
+   * Modern template: blue bar beside the heading.
+   */
+  if (
+    s.headingMode ===
+    "bar"
+  ) {
+    current.page.drawRectangle({
+      x:
+        s.marginX,
+      y:
+        current.y -
+        s.headingSize -
+        2,
+      width:
+        3,
+      height:
+        s.headingSize +
+        5,
+      color:
+        s.accent,
+    });
+
+    current.page.drawText(
+      title.toUpperCase(),
+      {
+        x:
+          s.marginX +
+          10,
+        y:
+          current.y -
+          s.headingSize,
+        size:
+          s.headingSize,
+        font:
+          current.boldFont,
+        color:
+          s.headingColor,
+      }
+    );
+
+    return {
+      ...current,
+      y:
+        current.y -
+        s.headingAdvance,
+    };
+  }
+
+  /*
+   * Classic and Compact templates: heading with a thin rule.
+   */
   current.page.drawText(
     title.toUpperCase(),
     {
       x:
-        MARGIN_X,
-
+        s.marginX,
       y:
         current.y -
-        HEADING_SIZE,
-
+        s.headingSize,
       size:
-        HEADING_SIZE,
-
+        s.headingSize,
       font:
         current.boldFont,
-
       color:
-        rgb(
-          0.08,
-          0.08,
-          0.08
-        ),
+        s.headingColor,
     }
   );
 
   current.page.drawLine({
     start: {
       x:
-        MARGIN_X,
+        s.marginX,
       y:
         current.y -
-        17,
+        (s.headingSize +
+          s.headingRuleGap),
     },
-
     end: {
       x:
         PAGE_WIDTH -
-        MARGIN_X,
+        s.marginX,
       y:
         current.y -
-        17,
+        (s.headingSize +
+          s.headingRuleGap),
     },
-
     thickness:
       0.65,
-
     color:
       rgb(
         0.72,
@@ -704,7 +951,7 @@ function drawSectionHeading(
     ...current,
     y:
       current.y -
-      29,
+      s.headingAdvance,
   };
 }
 
@@ -712,6 +959,13 @@ function drawSectionContent(
   state: PDFState,
   content: string
 ): PDFState {
+  const s =
+    state.style;
+
+  const contentWidth =
+    PAGE_WIDTH -
+    s.marginX * 2;
+
   const blocks =
     content
       .split(
@@ -751,32 +1005,24 @@ function drawSectionContent(
         current =
           ensureSpace(
             current,
-            BODY_LINE_HEIGHT
+            s.bodyLineHeight
           );
 
         current.page.drawText(
-          "-",
+          "\u2022",
           {
             x:
-              MARGIN_X +
+              s.marginX +
               2,
-
             y:
               current.y -
-              BODY_SIZE,
-
+              s.bodySize,
             size:
-              BODY_SIZE,
-
+              s.bodySize,
             font:
               current.font,
-
             color:
-              rgb(
-                0.18,
-                0.18,
-                0.18
-              ),
+              s.accent,
           }
         );
 
@@ -784,29 +1030,22 @@ function drawSectionContent(
           drawWrappedText({
             state:
               current,
-
             text:
               cleanBullet(
                 line
               ),
-
             x:
-              MARGIN_X +
-              BULLET_INDENT,
-
+              s.marginX +
+              s.bulletIndent,
             maxWidth:
-              PAGE_WIDTH -
-              MARGIN_X * 2 -
-              BULLET_INDENT,
-
+              contentWidth -
+              s.bulletIndent,
             font:
               current.font,
-
             fontSize:
-              BODY_SIZE,
-
+              s.bodySize,
             lineHeight:
-              BODY_LINE_HEIGHT,
+              s.bodyLineHeight,
           });
 
         continue;
@@ -816,25 +1055,18 @@ function drawSectionContent(
         drawWrappedText({
           state:
             current,
-
           text:
             line,
-
           x:
-            MARGIN_X,
-
+            s.marginX,
           maxWidth:
-            PAGE_WIDTH -
-            MARGIN_X * 2,
-
+            contentWidth,
           font:
             current.font,
-
           fontSize:
-            BODY_SIZE,
-
+            s.bodySize,
           lineHeight:
-            BODY_LINE_HEIGHT,
+            s.bodyLineHeight,
         });
     }
 
@@ -842,7 +1074,7 @@ function drawSectionContent(
       ...current,
       y:
         current.y -
-        6,
+        s.blockGap,
     };
   }
 
@@ -879,9 +1111,10 @@ function drawSection(
     ...current,
     y:
       current.y -
-      6,
+      state.style.sectionGap,
   };
 }
+
 
 export async function POST(
   request: Request
@@ -1032,6 +1265,10 @@ export async function POST(
         pdf,
         font,
         boldFont,
+        style:
+          TEMPLATE_STYLES[
+            exportRequest.templateId
+          ],
       });
 
     for (
