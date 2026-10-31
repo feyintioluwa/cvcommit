@@ -5,6 +5,7 @@ import {
   BorderStyle,
   Document,
   HeadingLevel,
+  LevelFormat,
   Packer,
   Paragraph,
   TextRun,
@@ -13,6 +14,20 @@ import {
 import {
   getCareerOSCVAccess,
 } from "@/lib/access/server-access";
+import {
+  consumeCVQuota,
+  CV_LIMIT_MESSAGE,
+} from "@/lib/access/cv-quota";
+
+
+import {
+  DEFAULT_CV_TEMPLATE,
+} from "@/lib/cv/templates/template-registry";
+
+import {
+  isCVTemplateId,
+  type CVTemplateId,
+} from "@/lib/cv/templates/template-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +44,7 @@ type ExportSection = {
 type ExportRequest = {
   cvHash: string;
   fileName: string;
+  templateId: CVTemplateId;
   sections: ExportSection[];
 };
 
@@ -153,6 +169,12 @@ function normalizeRequest(
   return {
     cvHash,
     fileName,
+    templateId:
+      isCVTemplateId(
+        raw.templateId
+      )
+        ? raw.templateId
+        : DEFAULT_CV_TEMPLATE,
     sections,
   };
 }
@@ -182,8 +204,142 @@ function cleanDownloadName(
     "CVCommit-CV";
 }
 
+/*
+ * One set of sizes and colours per CV template.
+ * Sizes are in Word units: font sizes in half-points
+ * (21 = 10.5 pt), spacing and margins in twips (720 = 0.5 inch).
+ */
+type DocxStyle = {
+  id: CVTemplateId;
+  margin: number;
+  nameSize: number;
+  detailSize: number;
+  headerRuleSize: number;
+  headerRuleColor: string;
+  headerAfter: number;
+  headingMode: "rule" | "bar";
+  headingSize: number;
+  headingBefore: number;
+  headingAfter: number;
+  bodySize: number;
+  lineSpacing: number;
+  paragraphAfter: number;
+  bulletAfter: number;
+  blockAfter: number;
+  accent: string;
+  ink: string;
+  muted: string;
+};
+
+const DOCX_STYLES: Record<
+  CVTemplateId,
+  DocxStyle
+> = {
+  classic: {
+    id: "classic",
+    margin: 720,
+    nameSize: 40,
+    detailSize: 20,
+    headerRuleSize: 12,
+    headerRuleColor: "222222",
+    headerAfter: 260,
+    headingMode: "rule",
+    headingSize: 22,
+    headingBefore: 220,
+    headingAfter: 120,
+    bodySize: 21,
+    lineSpacing: 260,
+    paragraphAfter: 100,
+    bulletAfter: 80,
+    blockAfter: 60,
+    accent: "2D2D2D",
+    ink: "111111",
+    muted: "555555",
+  },
+  modern: {
+    id: "modern",
+    margin: 720,
+    nameSize: 40,
+    detailSize: 20,
+    headerRuleSize: 24,
+    headerRuleColor: "2563EB",
+    headerAfter: 280,
+    headingMode: "bar",
+    headingSize: 22,
+    headingBefore: 240,
+    headingAfter: 120,
+    bodySize: 21,
+    lineSpacing: 270,
+    paragraphAfter: 110,
+    bulletAfter: 90,
+    blockAfter: 80,
+    accent: "2563EB",
+    ink: "111111",
+    muted: "555555",
+  },
+  compact: {
+    id: "compact",
+    margin: 576,
+    nameSize: 32,
+    detailSize: 17,
+    headerRuleSize: 6,
+    headerRuleColor: "999999",
+    headerAfter: 160,
+    headingMode: "rule",
+    headingSize: 19,
+    headingBefore: 140,
+    headingAfter: 80,
+    bodySize: 19,
+    lineSpacing: 240,
+    paragraphAfter: 60,
+    bulletAfter: 40,
+    blockAfter: 30,
+    accent: "2D2D2D",
+    ink: "111111",
+    muted: "555555",
+  },
+};
+
+/*
+ * Bullet lists: one list definition per template,
+ * so the bullet colour matches the template.
+ */
+const NUMBERING_CONFIG =
+  (
+    Object.keys(
+      DOCX_STYLES
+    ) as CVTemplateId[]
+  ).map((id) => ({
+    reference:
+      `cv-bullets-${id}`,
+    levels: [
+      {
+        level: 0,
+        format:
+          LevelFormat.BULLET,
+        text: "\u2022",
+        alignment:
+          AlignmentType.LEFT,
+        style: {
+          paragraph: {
+            indent: {
+              left: 360,
+              hanging: 260,
+            },
+          },
+          run: {
+            color:
+              DOCX_STYLES[id]
+                .accent,
+          },
+        },
+      },
+    ],
+  }));
+
 function createHeaderParagraphs(
-  content: string
+  content: string,
+  s: DocxStyle
 ): Paragraph[] {
   const lines =
     content
@@ -206,14 +362,34 @@ function createHeaderParagraphs(
     ...details
   ] = lines;
 
+  const rule = {
+    bottom: {
+      style:
+        BorderStyle.SINGLE,
+      size:
+        s.headerRuleSize,
+      color:
+        s.headerRuleColor,
+      space:
+        8,
+    },
+  };
+
   const paragraphs:
     Paragraph[] = [
       new Paragraph({
-        alignment:
-          AlignmentType.CENTER,
         spacing: {
-          after: 100,
+          after:
+            details.length >
+            0
+              ? 100
+              : s.headerAfter,
         },
+        border:
+          details.length ===
+          0
+            ? rule
+            : undefined,
         children: [
           new TextRun({
             text:
@@ -221,7 +397,9 @@ function createHeaderParagraphs(
             bold:
               true,
             size:
-              34,
+              s.nameSize,
+            color:
+              s.ink,
           }),
         ],
       }),
@@ -233,12 +411,12 @@ function createHeaderParagraphs(
   ) {
     paragraphs.push(
       new Paragraph({
-        alignment:
-          AlignmentType.CENTER,
         spacing: {
           after:
-            260,
+            s.headerAfter,
         },
+        border:
+          rule,
         children: [
           new TextRun({
             text:
@@ -246,21 +424,11 @@ function createHeaderParagraphs(
                 " | "
               ),
             size:
-              20,
+              s.detailSize,
+            color:
+              s.muted,
           }),
         ],
-        border: {
-          bottom: {
-            style:
-              BorderStyle.SINGLE,
-            size:
-              8,
-            color:
-              "222222",
-            space:
-              8,
-          },
-        },
       })
     );
   }
@@ -286,7 +454,8 @@ function cleanBullet(
 }
 
 function createBodyParagraphs(
-  content: string
+  content: string,
+  s: DocxStyle
 ): Paragraph[] {
   const blocks =
     content
@@ -326,20 +495,28 @@ function createBodyParagraphs(
       ) {
         paragraphs.push(
           new Paragraph({
-            text:
-              cleanBullet(
-                line
-              ),
-            bullet: {
+            numbering: {
+              reference:
+                `cv-bullets-${s.id}`,
               level:
                 0,
             },
             spacing: {
               after:
-                80,
+                s.bulletAfter,
               line:
-                260,
+                s.lineSpacing,
             },
+            children: [
+              new TextRun({
+                text:
+                  cleanBullet(
+                    line
+                  ),
+                size:
+                  s.bodySize,
+              }),
+            ],
           })
         );
 
@@ -350,16 +527,16 @@ function createBodyParagraphs(
         new Paragraph({
           spacing: {
             after:
-              100,
+              s.paragraphAfter,
             line:
-              260,
+              s.lineSpacing,
           },
           children: [
             new TextRun({
               text:
                 line,
               size:
-                21,
+                s.bodySize,
             }),
           ],
         })
@@ -370,7 +547,7 @@ function createBodyParagraphs(
       new Paragraph({
         spacing: {
           after:
-            60,
+            s.blockAfter,
         },
       })
     );
@@ -380,14 +557,16 @@ function createBodyParagraphs(
 }
 
 function createSectionParagraphs(
-  section: ExportSection
+  section: ExportSection,
+  s: DocxStyle
 ): Paragraph[] {
   if (
     section.key ===
     "header"
   ) {
     return createHeaderParagraphs(
-      section.content
+      section.content,
+      s
     );
   }
 
@@ -397,22 +576,37 @@ function createSectionParagraphs(
         HeadingLevel.HEADING_2,
       spacing: {
         before:
-          220,
+          s.headingBefore,
         after:
-          120,
+          s.headingAfter,
       },
-      border: {
-        bottom: {
-          style:
-            BorderStyle.SINGLE,
-          size:
-            5,
-          color:
-            "AAAAAA",
-          space:
-            5,
-        },
-      },
+      border:
+        s.headingMode ===
+        "bar"
+          ? {
+              left: {
+                style:
+                  BorderStyle.SINGLE,
+                size:
+                  24,
+                color:
+                  s.accent,
+                space:
+                  6,
+              },
+            }
+          : {
+              bottom: {
+                style:
+                  BorderStyle.SINGLE,
+                size:
+                  5,
+                color:
+                  "AAAAAA",
+                space:
+                  5,
+              },
+            },
       children: [
         new TextRun({
           text:
@@ -420,16 +614,19 @@ function createSectionParagraphs(
           bold:
             true,
           size:
-            22,
+            s.headingSize,
+          color:
+            s.ink,
         }),
       ],
     }),
-
     ...createBodyParagraphs(
-      section.content
+      section.content,
+      s
     ),
   ];
 }
+
 
 export async function POST(
   request: Request
@@ -538,9 +735,41 @@ export async function POST(
       );
     }
 
+    const quota =
+      await consumeCVQuota(
+        access,
+        "download"
+      );
+
+    if (!quota.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            CV_LIMIT_MESSAGE,
+        },
+        {
+          status: 429,
+          headers: {
+            "Cache-Control":
+              "no-store",
+          },
+        }
+      );
+    }
+
+    const style =
+      DOCX_STYLES[
+        exportRequest.templateId
+      ];
+
     const children =
       exportRequest.sections.flatMap(
-        createSectionParagraphs
+        (section) =>
+          createSectionParagraphs(
+            section,
+            style
+          )
       );
 
     const document =
@@ -551,6 +780,10 @@ export async function POST(
           "CVCommit Improved CV",
         description:
           "Improved CV generated with CVCommit",
+        numbering: {
+          config:
+            NUMBERING_CONFIG,
+        },
         styles: {
           default: {
             document: {
@@ -558,14 +791,14 @@ export async function POST(
                 font:
                   "Arial",
                 size:
-                  21,
+                  style.bodySize,
                 color:
                   "222222",
               },
               paragraph: {
                 spacing: {
                   line:
-                    260,
+                    style.lineSpacing,
                 },
               },
             },
@@ -577,13 +810,13 @@ export async function POST(
               page: {
                 margin: {
                   top:
-                    720,
+                    style.margin,
                   right:
-                    720,
+                    style.margin,
                   bottom:
-                    720,
+                    style.margin,
                   left:
-                    720,
+                    style.margin,
                 },
               },
             },

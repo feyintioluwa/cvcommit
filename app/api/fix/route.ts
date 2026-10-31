@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getCareerOSCVAccess } from "@/lib/access/server-access";
+import {
+  consumeCVQuota,
+  CV_LIMIT_MESSAGE,
+} from "@/lib/access/cv-quota";
+
 
 import {
   getCVSection,
@@ -943,6 +948,29 @@ export async function POST(request: Request) {
       openRouterConfigured: Boolean(OPENROUTER_API_KEY),
       openRouterModel: OPENROUTER_MODEL,
     });
+
+    const quota =
+      await consumeCVQuota(
+        access,
+        "fix"
+      );
+
+    if (!quota.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            CV_LIMIT_MESSAGE,
+        },
+        {
+          status: 429,
+          headers: {
+            "Cache-Control":
+              "no-store",
+          },
+        }
+      );
+    }
 
     const prompt = buildPrompt({
       request: normalizedRequest,

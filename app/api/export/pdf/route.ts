@@ -11,6 +11,11 @@ import {
   getCareerOSCVAccess,
 } from "@/lib/access/server-access";
 import {
+  consumeCVQuota,
+  CV_LIMIT_MESSAGE,
+} from "@/lib/access/cv-quota";
+
+import {
   DEFAULT_CV_TEMPLATE,
 } from "@/lib/cv/templates/template-registry";
 
@@ -1223,6 +1228,29 @@ export async function POST(
           status:
             403,
 
+          headers: {
+            "Cache-Control":
+              "no-store",
+          },
+        }
+      );
+    }
+
+    const quota =
+      await consumeCVQuota(
+        access,
+        "download"
+      );
+
+    if (!quota.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            CV_LIMIT_MESSAGE,
+        },
+        {
+          status: 429,
           headers: {
             "Cache-Control":
               "no-store",

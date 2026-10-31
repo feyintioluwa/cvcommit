@@ -2,104 +2,87 @@
 
 ### AI-Powered CV Analysis & Career Improvement Platform
 
-CVCommit is a full-stack web application that uses AI to analyze CVs and provide structured feedback on strengths, weaknesses, skills, career positioning, and areas for improvement.
+CVCommit is a full-stack web application that analyzes a CV with AI, scores it, points out exactly what to fix, and helps the user turn it into an improved, downloadable CV.
 
-It allows users to upload their CV, processes the document, analyzes its content using AI, and presents the results through an interactive dashboard designed to help users understand and improve their CV.
+A signed-in user uploads a CV (PDF or DOCX) and gets a free analysis with a score out of 100. Unlocking a CV adds **Fix My CV** (targeted AI rewrites), a **template preview**, and **PDF and DOCX export**.
 
----
-
-## Key Features
-
-* **CV Upload** — Upload CVs in PDF or DOCX format with file type and size validation.
-* **Document Processing** — Extracts text from uploaded CVs for analysis.
-* **AI-Powered Analysis** — Uses the Gemini API to analyze CV content and generate structured feedback.
-* **CV Scoring** — Evaluates key areas including content and experience, skills relevance, professional positioning, ATS readiness, education, and CV structure.
-* **CV Fix** — Provides targeted suggestions and improvements to help users strengthen weak areas identified during analysis.
-* **Actionable Recommendations** — Identifies strengths, weaknesses, missing skills, and areas where the CV can be improved.
-* **Results Dashboard** — Presents analysis results through a structured and easy-to-understand interface.
-* **Secure Server-Side Processing** — Handles AI requests and sensitive API credentials on the server side.
-* **Error Handling** — Provides user-friendly handling for API failures and service limitations.
-* **Responsive Design** — Designed to work across desktop and mobile devices.
-
----
-
-## Tech Stack
-
-### Frontend
-
-* **Next.js** — Full-stack React framework and application routing
-* **React** — Component-based user interface
-* **TypeScript** — Type-safe application development
-* **Tailwind CSS** — Responsive and utility-first styling
-
-### Backend
-
-* **Next.js API Routes** — Server-side API endpoints and application logic
-* **Node.js** — Server-side JavaScript runtime
-* **REST APIs** — Application and third-party service communication
-
-### Database & Authentication
-
-* **Supabase** — Database and authentication services
-
-### AI & Document Processing
-
-* **Google Gemini API** — AI-powered CV analysis and recommendations
-* **PDF/DOCX Processing** — CV text extraction and document handling
-
-### Deployment & Development
-
-* **Vercel** — Application deployment and hosting
-* **Git & GitHub** — Version control and source-code management
-
----
-
-## How It Works
-
-CVCommit follows a structured pipeline to transform an uploaded CV into actionable feedback:
-
-1. **Upload CV**
-   The user uploads a CV in PDF or DOCX format.
-
-2. **Validate & Process**
-   The application validates the file type and size, then extracts the CV's text content.
-
-3. **AI Analysis**
-   The extracted content is sent through a server-side analysis workflow using the Gemini API.
-
-4. **CV Evaluation**
-   The system evaluates the CV across multiple areas, including:
-
-   * Content & Experience
-   * Skills Relevance
-   * Professional Positioning
-   * ATS Readiness
-   * Education
-   * CV Structure
-
-5. **Score Generation**
-   Individual category scores are processed into an overall CV score.
-
-6. **Insights & Recommendations**
-   CVCommit identifies strengths, weaknesses, missing skills, and areas that require improvement.
-
-7. **CV Fix**
-   Users receive targeted suggestions for improving identified weaknesses and strengthening their CV.
-
-8. **Results Dashboard**
-   The final analysis is presented through an interactive dashboard where users can review their score, breakdown, and recommendations.
+**Live demo:** https://cvcommit.vercel.app
 
 ---
 
 ## Screenshots
 
-Screenshots of the application interface will be added here, including:
+| Landing page                                  | Upload                               |
+| --------------------------------------------- | ------------------------------------ |
+| ![Landing page](screenshots/landing-page.png) | ![CV upload](screenshots/upload.png) |
 
-* Landing page
-* CV upload interface
-* AI analysis workflow
-* Results dashboard
-* CV Fix recommendations
+| Analysis results                             | Fix My CV                         |
+| -------------------------------------------- | --------------------------------- |
+| ![Analysis results](screenshots/results.png) | ![CV fix](screenshots/cv-fix.png) |
+
+---
+
+## Key Features
+
+- **Accounts** — Sign up, log in and reset a password with email and password through Supabase Auth.
+- **CV Upload** — PDF or DOCX files up to 10 MB, with file type and size checks. Text is extracted on the server.
+- **AI Analysis** — The CV is analyzed by Google Gemini. If Gemini is unavailable, OpenRouter is tried next, and a built-in rule-based analysis is the last fallback, so the user always gets a result.
+- **Scoring** — An overall score out of 100 made of six parts: content and experience, skills relevance, professional positioning, ATS readiness, education, and CV structure. The score is added up on the server, so the AI cannot inflate it.
+- **Traceable Issues** — Each issue points back to the CV text it comes from. The AI is told never to invent jobs, qualifications or skills.
+- **Fix My CV** — Section-by-section AI rewrites that the user can apply or remove.
+- **Template Preview** — Three CV templates: Classic, Modern and Compact.
+- **Export** — Download the improved CV as **PDF** or **DOCX**. The export follows the template chosen in the preview.
+- **Payments** — A one-time unlock per CV, paid through Paystack (₦7,500). Payments are checked on the server by both a verify step and a signed webhook. Each unlock has generous usage limits for AI fixes and downloads.
+- **Responsive Design** — Works on desktop and mobile.
+
+---
+
+## How It Works
+
+1. **Sign in** and open the upload page.
+2. **Upload** a PDF or DOCX. The server validates the file and extracts its text.
+3. **Analyze** — the server sends the text to the AI and returns a score, a breakdown, strengths, weaknesses and issues.
+4. **Review** the results.
+5. **Unlock** the CV with a Paystack payment to use the paid features.
+6. **Fix** weak sections with AI-suggested rewrites.
+7. **Preview** the CV in a template and **export** it as PDF or DOCX.
+
+The CV text and analysis are kept in the browser's session storage while the user works. The server stores only the account, the plan, and a record of which CVs have been unlocked (a hash of the CV, not the CV itself).
+
+---
+
+## Tech Stack
+
+| Area            | Tools                                                             |
+| --------------- | ----------------------------------------------------------------- |
+| Framework       | Next.js 16 (App Router), React 19, TypeScript                     |
+| Styling         | Tailwind CSS 4                                                    |
+| Auth & database | Supabase (`@supabase/ssr`, `@supabase/supabase-js`)               |
+| AI              | Google Gemini (`@google/genai`), OpenRouter as a fallback         |
+| Documents       | `unpdf` and `mammoth` (reading), `pdf-lib` and `docx` (exporting) |
+| Payments        | Paystack                                                          |
+| Hosting         | Vercel                                                            |
+
+---
+
+## Project Structure
+
+```text
+app/
+  upload/  analysis/  results/  fix/  preview/  upgrade/     user-facing pages
+  login/  signup/  reset-password/                           account pages
+  api/
+    upload/        text extraction
+    analyze/       AI analysis
+    fix/           AI rewrite of one section
+    account/       current user, plan and unlock state
+    payments/paystack/{initialize,verify,webhook}
+    export/{pdf,docx}
+components/cv/templates/   Classic, Modern and Compact previews
+lib/
+  supabase/   access/   payments/   cv/   analysis/
+proxy.ts      redirects signed-out visitors away from protected pages
+```
 
 ---
 
@@ -107,78 +90,89 @@ Screenshots of the application interface will be added here, including:
 
 ### Prerequisites
 
-Before running CVCommit locally, make sure you have:
-
-* Node.js 18+
-* npm
-* Git
-* A Gemini API key
-* A Supabase project
+- Node.js 20 or newer
+- npm and Git
+- A [Supabase](https://supabase.com) project
+- A Gemini API key (recommended) and a Paystack account (for payments)
 
 ### Installation
 
-1. Clone the repository:
-
 ```bash
 git clone https://github.com/feyintioluwa/cvcommit.git
-```
-
-2. Navigate into the project:
-
-```bash
 cd cvcommit
-```
-
-3. Install dependencies:
-
-```bash
 npm install
 ```
 
-4. Create a `.env.local` file in the project root and add the required environment variables.
-
-5. Start the development server:
+Create a `.env.local` file in the project root (see below), then start the app:
 
 ```bash
 npm run dev
 ```
 
-6. Open the application in your browser:
+Open `http://localhost:3000`.
 
-```text
-http://localhost:3000
-```
+Other commands: `npm run build` (production build), `npm run start` (run the build), `npm run lint`.
 
 ---
 
 ## Environment Variables
 
-Create a `.env.local` file in the root directory and add the following environment variables:
+Create `.env.local` in the root directory:
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key
-
+# Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# AI
+GEMINI_API_KEY=your_gemini_api_key
+# GEMINI_MODEL=optional, overrides the default model
+OPENROUTER_API_KEY=your_openrouter_api_key
+# OPENROUTER_MODEL=optional, overrides the default model
+
+# Payments
+PAYSTACK_SECRET_KEY=your_paystack_secret_key
 ```
+
+| Variable                                                           | Used for                                                       |
+| ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Sign-in and reading the user's own data                        |
+| `SUPABASE_SERVICE_ROLE_KEY`                                        | **Server only.** Records paid unlocks after a verified payment |
+| `GEMINI_API_KEY`, `GEMINI_MODEL`                                   | Main AI provider                                               |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`                           | Fallback AI provider                                           |
+| `PAYSTACK_SECRET_KEY`                                              | Starting payments and checking the webhook signature           |
 
 ### Notes
 
-* Keep `.env.local` private and never commit it to GitHub.
-* Replace the placeholder values with credentials from your own Gemini and Supabase projects.
-* Environment variables are used to keep API credentials and service configuration separate from the source code.
+- Keep `.env.local` private and never commit it. `SUPABASE_SERVICE_ROLE_KEY` and `PAYSTACK_SECRET_KEY` must never be exposed to the browser.
+- Without any AI key the app still works, using the built-in rule-based analysis.
+- In your Paystack dashboard, set the webhook URL to `https://your-domain/api/payments/paystack/webhook`.
 
 ---
 
-## Live Demo & Repository
+## Database
 
-* **Live Demo:** https://cvcommit.vercel.app
-* **GitHub Repository:** https://github.com/feyintioluwa/cvcommit
+CVCommit uses two tables besides Supabase Auth:
+
+- **`profiles`** — one row per user, with a `plan` column. A plan of `pro` gives account-wide access.
+- **`cv_unlocks`** — one row per paid CV: the user, the CV hash, the payment reference, amount, currency, status and time. It is written only by the server with the service-role key, and its conflict key is `user_id, cv_hash`.
+
+Both tables have Row Level Security enabled: users can only read their own rows, and only the server writes. Each paid unlock also keeps a count of Fix requests and downloads, with limits set in `lib/access/cv-quota.ts`.
+
+The full setup (tables, security rules, the sign-up trigger and the usage-limit function) is in [`supabase/schema.sql`](supabase/schema.sql). Run it once in the Supabase SQL editor of a new project.
 
 ---
 
 ## Project Status
 
-CVCommit is an actively developed project. The current version provides CV upload, document processing, AI-powered analysis, scoring, actionable recommendations, and CV improvement guidance.
+CVCommit is under active development. Current features: account sign-in, CV upload and processing, AI analysis and scoring, issue-by-issue fixes, three preview templates, PDF and DOCX export, and per-CV paid unlocking.
 
-Future improvements may include additional career-focused features, expanded analysis capabilities, and further improvements to the user experience.
+Planned work includes tightening how a payment is tied to a specific CV, and more templates.
+
+---
+
+## Links
+
+- **Live Demo:** https://cvcommit.vercel.app
+- **GitHub Repository:** https://github.com/feyintioluwa/cvcommit
